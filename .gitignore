@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+build/
+dist/
+.idea/
+.vscode/
+.codex/
+.claude/
+.obsidian/
