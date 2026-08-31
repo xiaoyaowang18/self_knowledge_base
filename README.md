@@ -22,6 +22,7 @@
 
 ## 数据目录
 
+- `inbox/`：待处理缓冲区，存放尚未进入正式层的链接、文件或想法草稿；处理完成后正式事实进入其他层。
 - `raw/`：原始网页正文和附件，只新增、不覆盖。
 - `notes/`：单源笔记和用户想法。
 - `wiki/topics/`：主题结论。
@@ -37,11 +38,12 @@
 python3 scripts/kb.py sync
 python3 scripts/kb.py validate
 python3 scripts/kb.py search "知识库"
+python3 scripts/kb.py wiki-candidates --note-id "note-YYYYMMDD-HASH8"
 python3 scripts/kb.py lookup --source-url "https://example.com"
 python3 scripts/kb.py hash-file /path/to/file.pdf
 ```
 
-`sync` 会依次更新双向关联、重建索引并校验全库。命令返回非零退出码表示存在需要处理的问题。
+`wiki-candidates` 是只读的 Wiki 影响检查，会列出主题／实体页面的直接命中和关联候选，不自动创建或改写页面。`sync` 会依次更新双向关联、重建索引并校验全库，但不替代 AI 的语义 Wiki 编译。命令返回非零退出码表示存在需要处理的问题。
 
 ## MVP 边界
 

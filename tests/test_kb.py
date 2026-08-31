@@ -266,6 +266,48 @@ AI 编程降低了实现门槛。
         self.assertIn("topic-personal-knowledge-base", topic.meta["id"])
         self.assertTrue(first.exists() and second.exists())
 
+    def test_wiki_candidates_reports_direct_topic_and_entity_review(self) -> None:
+        note = self.write_note(
+            "2026-08-20-left.md",
+            "note-20260820-left",
+            "企业 AI 语义基础",
+            "raw/source-a.md",
+            "https://example.com/a",
+            "a" * 64,
+            ["ai", "architecture"],
+        )
+        topic = kb.Document(
+            self.root / "wiki" / "topics" / "enterprise-ai.md",
+            {
+                "id": "topic-enterprise-ai",
+                "type": "topic",
+                "title": "企业 AI",
+                "updated_at": "2026-08-20T12:00:00+08:00",
+                "source_notes": ["note-20260820-left"],
+                "contradictions": [],
+                "status": "active",
+            },
+            """# 企业 AI
+
+## 当前结论
+语义先行。
+## 支持证据
+- 一条笔记。
+## 反例或矛盾
+- 暂无。
+## 仍待确认的问题
+- 范围。
+## 可用于哪些内容
+- 架构文章。
+""",
+        )
+        kb.write_document(topic)
+
+        lines = kb.format_wiki_impact(self.root, "note-20260820-left")
+        self.assertTrue(any(line.startswith("TOPIC_UPDATE\ttopic-enterprise-ai") for line in lines))
+        self.assertTrue(any(line.startswith("ENTITY_REVIEW\tNONE") for line in lines))
+        self.assertTrue(note.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

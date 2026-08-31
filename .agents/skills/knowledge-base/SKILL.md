@@ -31,11 +31,12 @@ python3 scripts/kb.py hash-file /path/to/file
 python3 scripts/kb.py lookup --source-url "URL"
 python3 scripts/kb.py lookup --content-hash "SHA256"
 python3 scripts/kb.py search "查询词"
+python3 scripts/kb.py wiki-candidates --note-id "note-YYYYMMDD-HASH8"
 python3 scripts/kb.py sync
 python3 scripts/kb.py validate
 ```
 
-`lookup` 返回 0 表示已存在，返回 1 表示未找到。`sync` 依次更新双向关联、索引并校验全库。
+`lookup` 返回 0 表示已存在，返回 1 表示未找到。`wiki-candidates` 只读列出某条笔记可能影响的主题／实体 Wiki，不自动改写页面。`sync` 依次更新双向关联、索引并校验全库，不替代语义 Wiki 编译。
 
 ## 交付结果
 

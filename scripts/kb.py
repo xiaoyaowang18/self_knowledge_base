@@ -525,6 +525,81 @@ def search(root: Path, query: str, limit: int = 20) -> list[tuple[int, Document]
     return sorted(results, key=lambda item: (item[0], str(item[1].meta.get("updated_at", ""))), reverse=True)[:limit]
 
 
+def wiki_impact(
+    root: Path, note_id: str, threshold: int = 4
+) -> tuple[Document, list[tuple[str, Document, list[str]]]]:
+    """Return a note and Wiki pages that need semantic review.
+
+    This is intentionally read-only. Direct source inclusion is an update
+    candidate; relation-score matches are review candidates. Entity discovery
+    itself remains an AI task because this script has no reliable NER or
+    canonicalization rules.
+    """
+    documents, errors = load_documents(root)
+    if errors:
+        raise ValueError("\n".join(errors))
+    notes = {
+        str(document.meta.get("id", "")): document
+        for document in documents
+        if document.meta.get("type") in NOTE_TYPES and document.meta.get("status") == "active"
+    }
+    note = notes.get(note_id)
+    if note is None:
+        raise ValueError(f"找不到 active 笔记：{note_id}")
+
+    candidates: list[tuple[str, Document, list[str]]] = []
+    for wiki in documents:
+        if wiki.meta.get("type") not in WIKI_TYPES or wiki.meta.get("status") != "active":
+            continue
+        source_ids = [str(value) for value in wiki.meta.get("source_notes", [])]
+        if note_id in source_ids:
+            candidates.append(("update", wiki, ["already-listed"]))
+            continue
+
+        evidence: list[str] = []
+        for source_id in source_ids:
+            source_note = notes.get(source_id)
+            if source_note is None:
+                continue
+            score, shared_tags, shared_title = relation_score(note, source_note)
+            if score < threshold:
+                continue
+            parts = [f"related={source_id}", f"score={score}"]
+            if shared_tags:
+                parts.append(f"tags={','.join(shared_tags)}")
+            if shared_title:
+                parts.append(f"title={','.join(shared_title)}")
+            evidence.append(";".join(parts))
+        if evidence:
+            candidates.append(("review", wiki, evidence))
+    return note, candidates
+
+
+def format_wiki_impact(root: Path, note_id: str, threshold: int = 4) -> list[str]:
+    note, candidates = wiki_impact(root, note_id, threshold)
+    relative_note = note.path.relative_to(root).as_posix()
+    lines = [f"NOTE\t{note_id}\t{relative_note}\t{note.meta.get('title', '')}"]
+    grouped = {"topic": [], "entity": []}
+    for action, wiki, evidence in candidates:
+        grouped[str(wiki.meta.get("type"))].append((action, wiki, evidence))
+
+    for wiki_type, label in (("topic", "TOPIC"), ("entity", "ENTITY")):
+        for action, wiki, evidence in grouped[wiki_type]:
+            status = f"{label}_{'UPDATE' if action == 'update' else 'REVIEW'}"
+            relative = wiki.path.relative_to(root).as_posix()
+            lines.append(
+                f"{status}\t{wiki.meta.get('id')}\t{relative}\tevidence={'|'.join(evidence)}"
+            )
+        if not grouped[wiki_type]:
+            if wiki_type == "entity":
+                lines.append(
+                    "ENTITY_REVIEW\tNONE\t\t需要 AI 识别实体候选；脚本不自动创建实体页"
+                )
+            else:
+                lines.append("TOPIC_NONE\tNONE\t\t未发现已有主题页命中或关联候选")
+    return lines
+
+
 def run_sync(root: Path, threshold: int = 4) -> tuple[int, bool, list[str]]:
     changed_relations, _ = update_relations(root, threshold=threshold)
     changed_index = write_index(root)
@@ -552,6 +627,12 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser = subparsers.add_parser("search", help="搜索 Wiki、笔记和选题")
     search_parser.add_argument("query")
     search_parser.add_argument("--limit", type=int, default=20)
+
+    impact_parser = subparsers.add_parser(
+        "wiki-candidates", help="列出某条笔记可能影响的主题／实体 Wiki（只读）"
+    )
+    impact_parser.add_argument("--note-id", required=True)
+    impact_parser.add_argument("--threshold", type=int, default=4)
 
     lookup_parser = subparsers.add_parser("lookup", help="按来源 URL 或内容哈希查重")
     lookup_group = lookup_parser.add_mutually_exclusive_group(required=True)
@@ -592,6 +673,16 @@ def main(argv: list[str] | None = None) -> int:
         for score, document in results:
             print(f"{score}\t{document.path.relative_to(root)}\t{document.meta.get('title')}")
         return 0 if results else 1
+
+    if args.command == "wiki-candidates":
+        try:
+            lines = format_wiki_impact(root, args.note_id, args.threshold)
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+        for line in lines:
+            print(line)
+        return 0
 
     if args.command == "index":
         changed = write_index(root, check_only=args.check)
